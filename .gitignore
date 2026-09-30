@@ -5,3 +5,6 @@
 /driver_frame_vc.so
 driver/vpen/bin/linuxarm64/*.so
 *.o
+
+# HTC Vive wand render model, copied from a SteamVR install for the Frame runtime; not ours to redistribute.
+driver/vpen/resources/rendermodels/vr_controller_vive_1_5/

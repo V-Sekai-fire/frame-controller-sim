@@ -26,7 +26,7 @@ w() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else echo "$1
   -isystem "$(w "$SYSROOT/usr/include/c++/$GCC_VER/aarch64-unknown-linux-gnu")" \
   -I"$(w "$OPENVR")" -I"$(w "$SRCDIR")" \
   -shared -fPIC -fvisibility=hidden -O2 -std=c++17 -fno-exceptions -fno-rtti \
-  -Wl,--no-undefined \
+  -fuse-ld=lld -Wl,--no-undefined \
   "$(w "$SRC")" -o "$(w "$OUT")"
 
 file "$OUT"

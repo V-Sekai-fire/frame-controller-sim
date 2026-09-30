@@ -1,23 +1,47 @@
 // The Frame virtual-controller driver: N companion pen devices registered
 // beside the two real hand controllers, so the driver draws alongside the
-// person for annotation and grading. Each pen is a generic tracker on the
-// XR_HTCX_vive_tracker_interaction path; a Lean 4 feeder writes its pose and
-// trigger into shared memory (vpen_shm.h) and RunFrame polls it each frame.
+// person for annotation and grading. Each pen is a handed tracker that SteamVR
+// draws nothing for, so it never takes a hand role or clutters the view. A
+// feeder writes its pose and trigger into shared memory (vpen_shm.h) and
+// RunFrame polls it each frame.
 // Cross-built on Windows for aarch64 SteamOS; see build.sh.
 #include "openvr_driver.h"
 #include "vpen_shm.h"
+#include "shm_compat.h"
 
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <cstdio>
 #include <cstring>
-#include <ctime>
 
 using namespace vr;
 
-static const char *const kPenType = "vive_tracker_htcx";
-static const char *const kInputProfile = "{vpen}/input/vpen_profile.json";
+struct DeviceSpec {
+	ETrackedDeviceClass cls;  // Controller or GenericTracker
+	const char *type;         // Prop_ControllerType_String (an installed profile)
+	const char *profile;      // Prop_InputProfilePath_String
+	const char *render_model; // the device's own model, carried in Prop_ModelNumber_String
+};
+
+// Highest-marketshare device models, every one a handed tracker: a tracker never
+// contends for the person's hand roles, where a controller-class device does. SteamVR
+// draws nothing for them ({vpen}hidden); the real model rides in ModelNumber. 15 = the cap.
+static const DeviceSpec kDevices[] = {
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "oculus_quest2_controller_left"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "oculus_quest2_controller_right"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "{indexcontroller}valve_controller_knu_1_0_left"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "{indexcontroller}valve_controller_knu_1_0_right"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "oculus_quest_plus_controller_left"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "oculus_quest_plus_controller_right"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "{vpen}vr_controller_vive_1_5"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "{vpen}vr_controller_vive_1_5"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "oculus_rifts_controller_left"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "oculus_rifts_controller_right"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "{frame_controller}frame_controller_left"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "{frame_controller}frame_controller_right"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "{htc}vr_tracker_vive_3_0"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "{htc}vr_tracker_vive_1_0"},
+		{TrackedDeviceClass_GenericTracker, "vive_tracker", "{htc}/input/tracker/vive_tracker_handed_profile.json", "generic_tracker"},
+};
+static const int kNumDevices = (int)(sizeof(kDevices) / sizeof(kDevices[0]));
 
 static void log(const char *msg) {
 	if (VRDriverLog())
@@ -33,14 +57,27 @@ public:
 
 	EVRInitError Activate(uint32_t id) override {
 		m_id = id;
+		const DeviceSpec &sp = kDevices[m_slot < kNumDevices ? m_slot : kNumDevices - 1];
+		m_is_controller = sp.cls == TrackedDeviceClass_Controller;
 		PropertyContainerHandle_t c = VRProperties()->TrackedDeviceToPropertyContainer(id);
-		VRProperties()->SetStringProperty(c, Prop_ModelNumber_String, "vpen");
+		VRProperties()->SetStringProperty(c, Prop_ModelNumber_String, sp.render_model);
 		VRProperties()->SetStringProperty(c, Prop_SerialNumber_String, m_serial);
-		VRProperties()->SetStringProperty(c, Prop_ControllerType_String, kPenType);
-		VRProperties()->SetStringProperty(c, Prop_InputProfilePath_String, kInputProfile);
-		VRProperties()->SetInt32Property(c, Prop_DeviceClass_Int32, TrackedDeviceClass_GenericTracker);
+		VRProperties()->SetStringProperty(c, Prop_ControllerType_String, sp.type);
+		VRProperties()->SetStringProperty(c, Prop_InputProfilePath_String, sp.profile);
+		VRProperties()->SetStringProperty(c, Prop_RenderModelName_String, "{vpen}hidden");
+		VRProperties()->SetInt32Property(c, Prop_DeviceClass_Int32, sp.cls);
+		// OptOut of the hand roles: the pens are read by serial through OpenVR, and
+		// this keeps them from contending for the person's left/right controllers.
+		VRProperties()->SetInt32Property(c, Prop_ControllerRoleHint_Int32, TrackedControllerRole_OptOut);
+		// Lowest hand-selection priority so the person's real controllers always win
+		// the hand roles and UI focus over the companions (high numbers win, 7002).
+		VRProperties()->SetInt32Property(c, Prop_ControllerHandSelectionPriority_Int32, -1);
 		VRProperties()->SetBoolProperty(c, Prop_NeverTracked_Bool, false);
+		if (!m_is_controller)
+			return VRInitError_None; // trackers are pose-only
 
+		// Inputs matching the controller's profile so its bindings resolve. The feeder
+		// drives trigger/grip/menu/system; the rest exist for the bindings.
 		VRDriverInput()->CreateScalarComponent(c, "/input/trigger/value", &m_trigger,
 				VRScalarType_Absolute, VRScalarUnits_NormalizedOneSided);
 		VRDriverInput()->CreateScalarComponent(c, "/input/grip/value", &m_grip,
@@ -50,6 +87,25 @@ public:
 		VRDriverInput()->CreateBooleanComponent(c, "/input/menu/click", &m_menu);
 		VRDriverInput()->CreateBooleanComponent(c, "/input/system/click", &m_system);
 		VRDriverInput()->CreateHapticComponent(c, "/output/haptic", &m_haptic);
+
+		static const char *const extra_bool[] = {
+				"/input/trigger/touch", "/input/grip/touch",
+				"/input/thumbstick/click", "/input/thumbstick/touch",
+				"/input/a/click", "/input/a/touch", "/input/b/click", "/input/b/touch",
+				"/input/x/click", "/input/x/touch", "/input/y/click", "/input/y/touch",
+				"/input/view/click", "/input/view/touch", "/input/bumper/click", "/input/bumper/touch",
+				"/input/system/touch", "/input/menu/touch", "/input/thumbrest/touch",
+				"/input/dpad_up/click", "/input/dpad_up/touch", "/input/dpad_down/click", "/input/dpad_down/touch",
+				"/input/dpad_left/click", "/input/dpad_left/touch", "/input/dpad_right/click", "/input/dpad_right/touch"};
+		for (const char *p : extra_bool) {
+			VRInputComponentHandle_t h = 0;
+			VRDriverInput()->CreateBooleanComponent(c, p, &h);
+		}
+		VRInputComponentHandle_t hx = 0, hy = 0;
+		VRDriverInput()->CreateScalarComponent(c, "/input/thumbstick/x", &hx,
+				VRScalarType_Absolute, VRScalarUnits_NormalizedTwoSided);
+		VRDriverInput()->CreateScalarComponent(c, "/input/thumbstick/y", &hy,
+				VRScalarType_Absolute, VRScalarUnits_NormalizedTwoSided);
 		return VRInitError_None;
 	}
 
@@ -93,7 +149,7 @@ public:
 			return;
 		DriverPose_t pose = GetPose();
 		VRServerDriverHost()->TrackedDevicePoseUpdated(m_id, pose, sizeof(pose));
-		if (!active)
+		if (!active || !m_is_controller)
 			return;
 		VRDriverInput()->UpdateScalarComponent(m_trigger, s.trigger, 0);
 		VRDriverInput()->UpdateScalarComponent(m_grip, s.grip, 0);
@@ -109,6 +165,7 @@ private:
 	int m_slot;
 	const vpen_shared *m_shm;
 	uint32_t m_id = k_unTrackedDeviceIndexInvalid;
+	bool m_is_controller = false;
 	char m_serial[32];
 	VRInputComponentHandle_t m_trigger = 0, m_grip = 0;
 	VRInputComponentHandle_t m_trigger_click = 0, m_grip_click = 0, m_menu = 0, m_system = 0;
@@ -119,32 +176,21 @@ class CServerDriver : public IServerTrackedDeviceProvider {
 public:
 	EVRInitError Init(IVRDriverContext *ctx) override {
 		VR_INIT_SERVER_DRIVER_CONTEXT(ctx);
-		int fd = shm_open(VPEN_SHM_NAME, O_RDWR | O_CREAT, 0600);
-		if (fd >= 0) {
-			if (ftruncate(fd, sizeof(vpen_shared)) == 0)
-				m_shm = (vpen_shared *)mmap(nullptr, sizeof(vpen_shared),
-						PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-			close(fd);
-		}
-		if (m_shm == MAP_FAILED)
-			m_shm = nullptr;
+		m_shm = (vpen_shared *)vpen_shm_map(sizeof(vpen_shared));
 		if (m_shm && m_shm->magic != VPEN_MAGIC) {
 			// First mapping: stamp the header so the feeder finds a live segment.
 			std::memset(m_shm, 0, sizeof(vpen_shared));
 			m_shm->magic = VPEN_MAGIC;
 			m_shm->version = VPEN_VERSION;
 		}
-		int pens = VRSettings() ? VRSettings()->GetInt32("driver_vpen", "pens", nullptr) : 0;
-		if (pens <= 0 || pens > VPEN_MAX)
-			pens = 4;
-		m_count = pens;
+		// One device per kDevices entry (the marketshare controller pairs + trackers).
+		m_count = kNumDevices < VPEN_MAX ? kNumDevices : VPEN_MAX;
 		for (int i = 0; i < m_count; i++) {
 			m_pen[i] = new CPenDevice(i, m_shm);
-			VRServerDriverHost()->TrackedDeviceAdded(m_pen[i]->Serial(),
-					TrackedDeviceClass_GenericTracker, m_pen[i]);
+			VRServerDriverHost()->TrackedDeviceAdded(m_pen[i]->Serial(), kDevices[i].cls, m_pen[i]);
 		}
 		char msg[64];
-		std::snprintf(msg, sizeof(msg), "vpen: %d companion pens added, shm %s", m_count, m_shm ? "mapped" : "FAILED");
+		std::snprintf(msg, sizeof(msg), "vpen: %d companion devices added, shm %s", m_count, m_shm ? "mapped" : "FAILED");
 		log(msg);
 		return VRInitError_None;
 	}
@@ -154,8 +200,7 @@ public:
 			delete m_pen[i];
 			m_pen[i] = nullptr;
 		}
-		if (m_shm)
-			munmap(m_shm, sizeof(vpen_shared));
+		vpen_shm_unmap(m_shm, sizeof(vpen_shared));
 		m_shm = nullptr;
 		VR_CLEANUP_SERVER_DRIVER_CONTEXT();
 	}
