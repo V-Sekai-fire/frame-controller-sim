@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+title: frame-controller-sim
+message: "If you use this software, please cite it."
+type: software
+authors:
+  - family-names: Lee
+    given-names: "K. S. Ernest (Fire)"
+license: MIT
+repository-code: "https://github.com/V-Sekai-fire/frame-controller-sim"
+abstract: >-
+  A SteamVR virtual-controller driver and pose feeder that add companion pens
+  beside the real Steam Frame controllers, so the system draws alongside a
+  person for annotation of drawing and annotation grading (RFD 2287). The pens
+  are real SteamVR tracked devices on the non-conflicting vive-tracker object
+  roles, moved by a pose feeder through shared memory.
