@@ -1,7 +1,6 @@
 {
 	"driver_vpen": {
 		"enable": true,
-		"pens": 4,
-		"roles": "TrackerRole_Handed,TrackerRole_Camera,TrackerRole_Keyboard,TrackerRole_Chest"
+		"pens": 2
 	}
 }

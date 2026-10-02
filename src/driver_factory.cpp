@@ -1,8 +1,7 @@
-// The Frame virtual-controller driver: four extra XR controllers beside the two
-// the person holds. OpenXR has only two hand paths, so each extra is a tracker on
-// its own XR_HTCX_vive_tracker_interaction role with controller inputs. A feeder
-// writes poses and buttons into shared memory (vpen_shm.h); RunFrame polls it and
-// reports haptics back.
+// The Frame virtual-controller driver: two Quest 3 Touch Plus controllers beside
+// the two the person holds, so an app that binds the Meta Quest 3 Touch profile
+// sees them. A feeder writes poses and buttons into shared memory (vpen_shm.h);
+// RunFrame polls it and reports haptics back.
 // Cross-built on Windows for aarch64 SteamOS; see build.sh.
 #include "openvr_driver.h"
 #include "vpen_shm.h"
@@ -16,8 +15,7 @@
 
 using namespace vr;
 
-static const char *const kControllerType = "vive_tracker_htcx";
-static const char *const kDefaultRoles = "TrackerRole_Handed,TrackerRole_Camera,TrackerRole_Keyboard,TrackerRole_Chest";
+static const char *const kControllerType = "oculus_touch";
 static const char *const kInputProfile = "{vpen}/input/vpen_profile.json";
 
 static void log(const char *msg) {
@@ -39,7 +37,10 @@ public:
 		VRProperties()->SetStringProperty(c, Prop_SerialNumber_String, m_serial);
 		VRProperties()->SetStringProperty(c, Prop_ControllerType_String, kControllerType);
 		VRProperties()->SetStringProperty(c, Prop_InputProfilePath_String, kInputProfile);
-		VRProperties()->SetInt32Property(c, Prop_DeviceClass_Int32, TrackedDeviceClass_GenericTracker);
+		VRProperties()->SetInt32Property(c, Prop_DeviceClass_Int32, TrackedDeviceClass_Controller);
+		VRProperties()->SetInt32Property(c, Prop_ControllerRoleHint_Int32,
+				m_slot == 0 ? TrackedControllerRole_LeftHand : TrackedControllerRole_RightHand);
+		VRProperties()->SetInt32Property(c, Prop_ControllerHandSelectionPriority_Int32, -1000);
 		VRProperties()->SetBoolProperty(c, Prop_NeverTracked_Bool, false);
 
 		VRDriverInput()->CreateScalarComponent(c, "/input/trigger/value", &m_trigger,
@@ -146,12 +147,11 @@ public:
 		m_count = pens;
 		for (int i = 0; i < m_count; i++) {
 			m_pen[i] = new CPenDevice(i, m_shm);
-			AssignRole(i, m_pen[i]->Serial());
 			VRServerDriverHost()->TrackedDeviceAdded(m_pen[i]->Serial(),
-					TrackedDeviceClass_GenericTracker, m_pen[i]);
+					TrackedDeviceClass_Controller, m_pen[i]);
 		}
 		char msg[64];
-		std::snprintf(msg, sizeof(msg), "vpen: %d extra controllers added, shm %s", m_count, m_shm ? "mapped" : "FAILED");
+		std::snprintf(msg, sizeof(msg), "vpen: %d Quest 3 Touch Plus controllers added, shm %s", m_count, m_shm ? "mapped" : "FAILED");
 		log(msg);
 		return VRInitError_None;
 	}
@@ -189,27 +189,6 @@ public:
 			m_pen[i]->Update(snap.pen[i], active);
 		}
 	}
-
-	// Slot i takes the i-th role of driver_vpen/roles, written where SteamVR keeps tracker roles.
-	void AssignRole(int slot, const char *serial) {
-		if (!VRSettings())
-			return;
-		char roles[256] = {};
-		EVRSettingsError err = VRSettingsError_None;
-		VRSettings()->GetString("driver_vpen", "roles", roles, sizeof(roles), &err);
-		if (err != VRSettingsError_None || !roles[0])
-			std::snprintf(roles, sizeof(roles), "%s", kDefaultRoles);
-		char *save = nullptr;
-		char *role = strtok_r(roles, ",", &save);
-		for (int i = 0; role && i < slot; i++)
-			role = strtok_r(nullptr, ",", &save);
-		if (!role)
-			return;
-		char path[64];
-		std::snprintf(path, sizeof(path), "/devices/vpen/%s", serial);
-		VRSettings()->SetString("trackers", path, role);
-	}
-
 	// A haptic pulse an app sends to a controller bumps its slot's haptic_seq for the feeder.
 	void PollHaptics() {
 		VREvent_t ev;

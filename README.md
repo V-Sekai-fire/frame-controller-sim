@@ -1,4 +1,4 @@
-SteamVR driver plus a feeder: four extra XR controllers on the Steam Frame, beside the two the person holds.
+SteamVR driver plus a feeder: two Quest 3 Touch Plus controllers on the Steam Frame, beside the two the person holds.
 
 # frame-controller-sim
 
@@ -7,24 +7,19 @@ system draws while the person draws. Part of RFD 2287; the goal is annotation of
 drawing and annotation grading. The pens are real SteamVR devices, so more pens
 draw more strokes at once within the limit of the available tracker roles.
 
-## Four extra controllers
+## Two Quest 3 Touch Plus controllers
 
-The person holds the Frame's two real controllers on OpenXR's two hand paths.
-The `vpen` driver adds four more **real SteamVR devices** that OpenXR apps see
-as controllers too. OpenXR has no third or fourth hand, so each extra is a
-tracker on its own `XR_HTCX_vive_tracker_interaction` role, with trigger, grip,
-menu and system inputs, a pose and haptics. None of them takes a hand from the
-person.
-
-The roles come from `driver_vpen/roles` in `default.vrsettings`, written at
-startup into SteamVR's `trackers` settings: `TrackerRole_Handed` (OpenXR's
-`handheld_object`), `TrackerRole_Camera`, `TrackerRole_Keyboard` and
-`TrackerRole_Chest`. Each must be a role none of the person's own body trackers
-uses; change the list if one does.
+The person holds the Frame's two real controllers; the `vpen` driver adds two
+more SteamVR controllers beside them, each one presenting as a Meta Quest 3
+Touch Plus controller (`controller_type = "oculus_touch"`). An OpenXR app that
+binds the Meta Quest 3 Touch profile sees them with trigger, grip, menu,
+system, a pose and haptics. Slot 0 is the left hand, slot 1 the right. Their
+hand-selection priority is -1000, so the person's own controllers keep the two
+hands.
 
 A feeder moves the extras by writing pose and buttons into shared memory
-(`src/vpen_shm.h`) that the driver polls each frame. When an app pulses an
-extra's haptics, the driver bumps that slot's `haptic_seq` for the feeder.
+(`src/vpen_shm.h`) that the driver polls each frame. An app's haptic pulse on
+an extra bumps its slot's `haptic_seq` for the feeder.
 
 ## Status
 
