@@ -1,4 +1,4 @@
-SteamVR virtual-controller driver plus a feeder: companion pens on the Steam Frame that draw alongside a person, for annotation and grading.
+SteamVR driver plus a feeder: two Quest 3 Touch Plus controllers on the Steam Frame, beside the two the person holds.
 
 # frame-controller-sim
 
@@ -7,21 +7,19 @@ system draws while the person draws. Part of RFD 2287; the goal is annotation of
 drawing and annotation grading. The pens are real SteamVR devices, so more pens
 draw more strokes at once within the limit of the available tracker roles.
 
-## Real pens only
+## Two Quest 3 Touch Plus controllers
 
-The companions are **real SteamVR tracked devices**, never faked at the app
-layer. The pen reads them through OpenXR like any controller, and any other
-OpenXR app sees them too, with real haptics.
+The person holds the Frame's two real controllers; the `vpen` driver adds two
+more SteamVR controllers beside them, each one presenting as a Meta Quest 3
+Touch Plus controller (`controller_type = "oculus_touch"`). An OpenXR app that
+binds the Meta Quest 3 Touch profile sees them with trigger, grip, menu,
+system, a pose and haptics. Slot 0 is the left hand, slot 1 the right. Their
+hand-selection priority is -1000, so the person's own controllers keep the two
+hands.
 
-OpenXR exposes only two hand roles (the person's controllers hold them), and
-Godot surfaces vive trackers **by role, not by serial**. The person's own VR
-trackers own the body-part htcx roles, so the roles left for a pen are the
-non-conflicting *object* roles: `handheld_object` (always), and `camera` /
-`keyboard` when the person's trackers do not use them. So the `vpen` driver
-registers up to three real companion pens on those roles.
-
-A feeder moves them by writing pose + trigger into shared memory
-(`src/vpen_shm.h`) that the driver polls each frame.
+A feeder moves the extras by writing pose and buttons into shared memory
+(`src/vpen_shm.h`) that the driver polls each frame. An app's haptic pulse on
+an extra bumps its slot's `haptic_seq` for the feeder.
 
 ## Status
 
@@ -44,7 +42,7 @@ Frame has no compiler), against a sysroot assembled from the Frame; see
 ## Layout
 
 - `src/driver_factory.cpp` — the driver: an `IServerTrackedDeviceProvider`
-  adding the native pen(s), seqlock-reading the shared memory.
+  adding the four controllers, seqlock-reading the shared memory.
 - `src/vpen_shm.h` — the producer/consumer shared-memory contract.
 - `driver/vpen/` — the SteamVR driver package (manifest, input profile,
   settings); `bin/linuxarm64/driver_vpen.so` is the build output.

@@ -1,7 +1,7 @@
 {
 	"jsonid": "input_profile",
-	"controller_type": "vive_tracker_htcx",
-	"device_class": "TrackedDeviceClass_GenericTracker",
+	"controller_type": "oculus_touch",
+	"device_class": "TrackedDeviceClass_Controller",
 	"resource_root": "vpen",
 	"driver_name": "vpen",
 	"should_show_binding_errors": true,
