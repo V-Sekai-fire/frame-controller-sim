@@ -37,6 +37,12 @@ Frame has no compiler), against a sysroot assembled from the Frame; see
 
     SYSROOT=/path/to/sysroot bash build.sh          # -> driver/vpen/bin/linuxarm64/driver_vpen.so
 
+For desktop SteamVR on Windows, `build-win.sh` builds the driver and a test
+feeder with llvm-mingw (scoop `mingw-mstorsjo-llvm-ucrt`):
+
+    bash build-win.sh                               # -> driver/vpen/bin/win64/driver_vpen.dll, vpen_feeder.exe
+    driver/vpen/bin/win64/vpen_feeder.exe --selftest
+
 `third_party/openvr` vendors the OpenVR driver headers (BSD-3-Clause).
 
 ## Layout
@@ -44,8 +50,13 @@ Frame has no compiler), against a sysroot assembled from the Frame; see
 - `src/driver_factory.cpp` — the driver: an `IServerTrackedDeviceProvider`
   adding the four controllers, seqlock-reading the shared memory.
 - `src/vpen_shm.h` — the producer/consumer shared-memory contract.
+- `src/shm_compat.h` — maps it: POSIX shm on the Frame, a file-backed
+  mapping on Windows.
+- `src/vpen_feeder.cpp` — a test feeder that moves the controllers, presses
+  their buttons and prints the haptic pulses the driver reports.
 - `driver/vpen/` — the SteamVR driver package (manifest, input profile,
   settings); `bin/linuxarm64/driver_vpen.so` is the build output.
 - `feeder/` — the pose feeder (added next; frame-eye-osc shape: Slang -> C++,
   writes the shm the driver polls).
-- `build.sh`, `docs/sysroot.md` — the cross-build.
+- `build.sh`, `docs/sysroot.md` — the cross-build; `build-win.sh` — the win64
+  build.
