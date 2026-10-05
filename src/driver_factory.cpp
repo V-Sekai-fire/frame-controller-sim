@@ -91,7 +91,6 @@ public:
 	}
 
 #ifdef __MINGW32__
-	// vrserver returns the struct MSVC-style: this, then the result pointer, which it expects back.
 	DriverPose_t *GetPose(DriverPose_t *out) override {
 		*out = Pose();
 		return out;
