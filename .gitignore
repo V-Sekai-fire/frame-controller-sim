@@ -5,3 +5,5 @@
 /driver_frame_vc.so
 driver/vpen/bin/linuxarm64/*.so
 *.o
+/build/
+driver/vpen/bin/win64/
