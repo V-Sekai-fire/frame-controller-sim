@@ -1,9 +1,0 @@
-# {vpen}hidden: one zero-area face, so SteamVR loads a valid model and draws nothing.
-mtllib hidden.mtl
-v 0 0 0
-v 0 0 0
-v 0 0 0
-vt 0 0
-vn 0 1 0
-usemtl hidden
-f 1/1/1 2/1/1 3/1/1
