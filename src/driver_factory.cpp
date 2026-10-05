@@ -138,8 +138,8 @@ public:
 	EVRInitError Init(IVRDriverContext *ctx) override {
 		VR_INIT_SERVER_DRIVER_CONTEXT(ctx);
 		m_shm = (vpen_shared *)vpen_shm_map(sizeof(vpen_shared));
-		if (m_shm && m_shm->magic != VPEN_MAGIC) {
-			// First mapping: stamp the header so the feeder finds a live segment.
+		if (m_shm && (m_shm->magic != VPEN_MAGIC || m_shm->version != VPEN_VERSION)) {
+			// First mapping, or a file from another vpen_shm version: stamp the header for the feeder.
 			std::memset(m_shm, 0, sizeof(vpen_shared));
 			m_shm->magic = VPEN_MAGIC;
 			m_shm->version = VPEN_VERSION;
