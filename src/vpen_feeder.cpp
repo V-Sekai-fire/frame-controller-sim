@@ -85,8 +85,10 @@ static int check(bool ok, const char *what) {
 	return ok ? 0 : 1;
 }
 
-static int selftest(vpen_shared *m) {
+static int selftest(const vpen_shared *mapped) {
 	int fails = 0;
+	vpen_shared scratch = {};
+	vpen_shared *m = &scratch;
 	vpen_shared snap;
 	uint32_t all = VPEN_BTN_TRIGGER_CLICK | VPEN_BTN_GRIP_CLICK | VPEN_BTN_MENU | VPEN_BTN_SYSTEM;
 	write_frame(m, 2, 0.0, all);
@@ -98,9 +100,10 @@ static int selftest(vpen_shared *m) {
 	fails += check(!read_frame(m, &snap), "negative: a frame mid-write is refused");
 	__atomic_fetch_add(&m->seq, 1, __ATOMIC_ACQ_REL);
 
-	fails += check(header_ok(m), "positive: the mapped header matches vpen_shm.h");
-	vpen_shared stale = *m;
-	stale.version = VPEN_VERSION + 1;
+	fails += check(header_ok(mapped), "positive: the mapped header matches vpen_shm.h");
+	vpen_shared stale = {};
+	stale.magic = mapped->magic;
+	stale.version = mapped->version + 1;
 	fails += check(!header_ok(&stale), "negative: a header of another version is refused");
 
 	uint32_t seen[VPEN_MAX] = {};
@@ -109,8 +112,6 @@ static int selftest(vpen_shared *m) {
 	write_frame(m, 2, 1.0, all);
 	fails += check(take_pulses(m, 1, seen) == 1, "positive: a driver pulse survives a frame write and is counted once");
 	fails += check(take_pulses(m, 1, seen) == 0, "negative: no pulse counts zero");
-
-	write_frame(m, 0, 2.0, 0);
 	return fails ? 1 : 0;
 }
 
