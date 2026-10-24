@@ -10,6 +10,6 @@ repository-code: "https://github.com/V-Sekai-fire/frame-controller-sim"
 abstract: >-
   A SteamVR virtual-controller driver and pose feeder that add companion pens
   beside the real Steam Frame controllers, so the system draws alongside a
-  person for annotation of drawing and annotation grading (RFD 2287). The pens
+  person for annotation of drawing and annotation grading (RFD66606-2287). The pens
   are real SteamVR tracked devices on the non-conflicting vive-tracker object
   roles, moved by a pose feeder through shared memory.
